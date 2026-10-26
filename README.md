@@ -62,29 +62,38 @@
 ---
 
 ### 🐧 Linux:
-* **Способ 1 (Системная установка):**
-  Установите патчер в систему одной командой:
+* **Способ 1 (Скачать и установить в 1 команду):**
   ```bash
-  sudo ./install.sh
+  sudo curl -L "https://github.com/ikonaparalyse-collab/agy-patcher/releases/latest/download/agy_patcher-linux-x64" -o /usr/local/bin/agy-patcher && sudo chmod +x /usr/local/bin/agy-patcher
   ```
-  После этого запускайте в любом терминале через `sudo`:
+  После этого запускайте в любом месте системы через `sudo`:
   ```bash
-  sudo agy-patcher status -A   # Проверка
-  sudo agy-patcher patch -A    # Применение патча
-  sudo agy-patcher restore -A  # Откат
+  sudo agy-patcher patch -A    # Пропатчить в 1 клик
+  sudo agy-patcher status -A   # Проверить статус
+  sudo agy-patcher restore -A  # Откатить назад
   sudo agy-patcher             # Интерактивное меню
   ```
-* **Способ 2 (Без установки):**
+* **Способ 2 (Через git clone):**
   ```bash
-  chmod +x bin/agy_patcher
-  sudo ./bin/agy_patcher patch -A
+  git clone https://github.com/ikonaparalyse-collab/agy-patcher.git
+  cd agy-patcher
+  sudo ./install.sh
+  sudo agy-patcher patch -A
   ```
 
 ---
 
 ### 🍏 macOS:
-* **Способ 1 (Двойной клик в Finder):** Дважды кликните по файлу `patch_mac.command`. Откроется терминал, запросит пароль администратора (нужен для переподписи бандла `.app`) и автоматически пропатчит Antigravity.
-* **Способ 2 (Установка через sudo):**
+* **Способ 1 (Быстрая установка через curl в 1 команду):**
+  ```bash
+  sudo curl -L "https://github.com/ikonaparalyse-collab/agy-patcher/releases/latest/download/agy_patcher-macos-universal" -o /usr/local/bin/agy-patcher && sudo chmod +x /usr/local/bin/agy-patcher
+  ```
+  После этого запускайте:
+  ```bash
+  sudo agy-patcher patch -A
+  ```
+* **Способ 2 (Двойной клик в Finder):** Дважды кликните по файлу `patch_mac.command`. Откроется терминал, запросит пароль администратора (нужен для переподписи бандла `.app`) и автоматически пропатчит Antigravity.
+* **Способ 3 (Установка через sudo):**
   ```bash
   sudo ./install.sh
   sudo agy-patcher patch -A
