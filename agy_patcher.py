@@ -1388,6 +1388,7 @@ def build_jobs(args) -> Tuple[List[Job], List[str]]:
 def interactive_menu() -> int:
     log(c_bold("=================================================="))
     log(c_cyan("       Google Antigravity One-Click Patcher       "))
+    log(colorize("              Telegram: @s1lentov1                ", "90"))
     log(c_bold("=================================================="))
 
     log("\nПоиск установленных компонентов Google Antigravity...")

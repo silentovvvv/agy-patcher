@@ -2,6 +2,7 @@
 DIR="$(cd "$(dirname "$0")" && pwd)"
 echo "=================================================="
 echo "       Google Antigravity One-Click Patcher       "
+echo "              Telegram: @s1lentov1                "
 echo "=================================================="
 echo ""
 echo "Для модификации и переподписи бандлов macOS требуются права администратора."

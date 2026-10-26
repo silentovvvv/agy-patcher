@@ -5,6 +5,7 @@ cd /d "%~dp0"
 
 echo ==================================================
 echo        Google Antigravity One-Click Patcher
+echo               Telegram: @s1lentov1
 echo ==================================================
 echo.
 
