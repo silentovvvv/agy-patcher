@@ -1385,9 +1385,79 @@ def build_jobs(args) -> Tuple[List[Job], List[str]]:
     return jobs, ide_files
 
 
+def interactive_menu() -> int:
+    log(c_bold("=================================================="))
+    log(c_cyan("       Google Antigravity One-Click Patcher       "))
+    log(c_bold("=================================================="))
+
+    log("\nПоиск установленных компонентов Google Antigravity...")
+    jobs, ide_files = build_antigravity_jobs()
+    total = len(jobs) + len(ide_files)
+    if total == 0:
+        log(c_warn("Компоненты Antigravity не найдены в стандартных путях системы."))
+    else:
+        log(c_ok(f"Обнаружено компонентов: {total}"))
+        for j in jobs:
+            log(f"  • {j.path} [{j.name}]")
+        for ide in ide_files:
+            log(f"  • {ide} (IDE main.js)")
+
+    log("\nВыберите действие:")
+    log(f"  {c_bold('[1]')} Применить патч (Patch)")
+    log(f"  {c_bold('[2]')} Проверить статус компонентов (Status)")
+    log(f"  {c_bold('[3]')} Восстановить оригиналы из бэкапов (Restore)")
+    log(f"  {c_bold('[0]')} Выход")
+
+    try:
+        choice = input("\nВведите номер [1]: ").strip()
+    except (KeyboardInterrupt, EOFError):
+        log("\nОтменено.")
+        return 0
+
+    if not choice:
+        choice = "1"
+
+    rc = 0
+    if choice == "1":
+        log("\n" + c_bold("--- Применение патча ---"))
+        if jobs:
+            rc = cmd_patch(jobs)
+        for ide in ide_files:
+            patch_ide_main_js(ide)
+    elif choice == "2":
+        log("\n" + c_bold("--- Проверка статуса ---"))
+        if jobs:
+            rc = cmd_status(jobs, verbose=True)
+        for ide in ide_files:
+            patch_ide_main_js(ide, dry_run=True)
+    elif choice == "3":
+        log("\n" + c_bold("--- Восстановление оригиналов ---"))
+        if jobs:
+            rc = cmd_restore(jobs)
+        for ide in ide_files:
+            restore_ide_main_js(ide)
+    elif choice == "0":
+        log("Выход.")
+        return 0
+    else:
+        log(c_err("Неверный выбор."))
+        rc = 1
+
+    try:
+        input("\nНажмите Enter, чтобы закрыть окно...")
+    except (KeyboardInterrupt, EOFError):
+        pass
+    return rc
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(errors="replace")
+
+    # Если запущен без параметров (например, двойным кликом мыши) — открываем интерактивное меню
+    args_list = sys.argv[1:] if argv is None else argv
+    if len(args_list) == 0:
+        return interactive_menu()
 
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("-A", "--antigravity", action="store_true",
