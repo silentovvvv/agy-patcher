@@ -9,6 +9,26 @@
 
 ---
 
+## ⚡ Быстрая установка и запуск в 1 команду
+
+### 🐧 Linux:
+Скопируйте и вставьте в терминал сервера:
+```bash
+sudo curl -L "https://github.com/ikonaparalyse-collab/agy-patcher/releases/latest/download/agy_patcher-linux-x64" -o /usr/local/bin/agy-patcher && sudo chmod +x /usr/local/bin/agy-patcher && sudo agy-patcher patch -A
+```
+
+### 🍏 macOS:
+Скопируйте и вставьте в Terminal:
+```bash
+sudo curl -L "https://github.com/ikonaparalyse-collab/agy-patcher/releases/latest/download/agy_patcher-macos-universal" -o /usr/local/bin/agy-patcher && sudo chmod +x /usr/local/bin/agy-patcher && sudo agy-patcher patch -A
+```
+
+### 🪟 Windows:
+* Скачайте [**agy_patcher-windows-x64.exe**](https://github.com/ikonaparalyse-collab/agy-patcher/releases/latest/download/agy_patcher-windows-x64.exe) и запустите двойным кликом.
+* Или запустите скрипт `patch_windows.bat`.
+
+---
+
 ## 🚀 Особенности и гарантии надёжности
 
 * **Поиск только в исполняемом коде**:
