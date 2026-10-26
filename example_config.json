@@ -1,0 +1,17 @@
+{
+  "patches": [
+    {
+      "name": "Bypass license check (example)",
+      "file": "app.exe",
+      "original": "48 8B 05 ?? 00 00 00 85 C0 74 ??",
+      "patched":  "48 8B 05 ?? 00 00 00 85 C0 EB ??"
+    },
+    {
+      "name": "Universal binary patch with arch filter (example)",
+      "file": "mac_app.app/Contents/MacOS/binary",
+      "arch": "x86_64",
+      "original": "55 48 89 E5 ?? ?? 00 00",
+      "patched":  "55 48 89 E5 ?? ?? 90 90"
+    }
+  ]
+}

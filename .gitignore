@@ -1,0 +1,28 @@
+# Байт-код Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Временные файлы сборки PyInstaller
+build/
+dist/
+*.spec
+_zipapp_staging/
+
+# Резервные копии патчера
+*.agybak
+*.agysignbak
+*.agytmp
+
+# Окружения и IDE
+.venv/
+env/
+venv/
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Системные файлы
+.DS_Store
+Thumbs.db
