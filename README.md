@@ -3,6 +3,10 @@
 > **Безопасный сигнатурный патчер для PE (Windows), ELF (Linux) и Mach-O (macOS).**  
 > Написан на стандартной библиотеке Python 3.8+ (zero dependencies) с возможностью запуска как автономный исполняемый файл без установленного Python.
 
+<p align="center">
+  <img src="terminal_preview.png" alt="agy_patcher Terminal Preview" width="800">
+</p>
+
 ---
 
 ## 🚀 Особенности и гарантии надёжности
