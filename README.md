@@ -43,7 +43,33 @@
 
 ---
 
-## 🛠 Быстрый старт
+## ⚡ Экспресс-режим: Патч Google Antigravity в 1 клик (`-A` / `--antigravity`)
+
+В программу встроены готовые сигнатуры и модуль автопоиска для всех компонентов Google Antigravity (CLI, Language Server / Manager, VS Code Extension, IDE).
+
+### Проверить статус компонентов:
+```cmd
+bin\agy_patcher.exe status -A
+```
+
+### Безопасная симуляция (без записи на диск):
+```cmd
+bin\agy_patcher.exe patch -A --dry-run
+```
+
+### Применить патч (с автоматическим созданием бэкапов и пересчётом PE CheckSum):
+```cmd
+bin\agy_patcher.exe patch -A
+```
+
+### Откатить назад:
+```cmd
+bin\agy_patcher.exe restore -A
+```
+
+---
+
+## 🛠 Быстрый старт (Универсальный режим)
 
 ### 1. Проверка состояния бинарника (`status`)
 

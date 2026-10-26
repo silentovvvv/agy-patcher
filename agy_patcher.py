@@ -50,7 +50,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 
 BAK_SUFFIX = ".agybak"
 SIGN_SUFFIX = ".agysignbak"
@@ -67,6 +67,38 @@ MACH_CPU_TYPES = {
     0x0100000C: "arm64",
     0x0200000C: "arm64_32",
 }
+
+# Встроенные сигнатуры для обхода проверок Antigravity (Eligibility Gates)
+ANTIGRAVITY_GATES = [
+    {
+        "name": "Antigravity Language Server / Manager / Hub (x64: hasValidAuth=true)",
+        "arch": "x86_64",
+        "orig": "80 78 08 00 74 ?? 48 8B 54 24 70 48 89 50 60",
+        "patch": "C6 40 08 01 90 90 48 8B 54 24 70 48 89 50 60",
+    },
+    {
+        "name": "Antigravity CLI (x64: eligibility screen off)",
+        "arch": "x86_64",
+        "orig": "48 85 C9 0F 84 ?? ?? ?? ?? 80 79 08 00 0F 85 ?? ?? ?? ?? 48 89 C8 90 E8 ?? ?? ?? ?? 48 89 84 24 E0 00 00 00 48 89 9C 24 E8 00 00 00 48 89 8C 24 F0 00 00 00",
+        "patch": "48 85 C9 0F 84 ?? ?? ?? ?? 48 85 C9 90 0F 85 ?? ?? ?? ?? 48 89 C8 90 E8 ?? ?? ?? ?? 48 89 84 24 E0 00 00 00 48 89 9C 24 E8 00 00 00 48 89 8C 24 F0 00 00 00",
+    },
+    {
+        "name": "Antigravity Language Server / Manager (arm64: hasValidAuth=true)",
+        "arch": "arm64",
+        "orig": "03 20 40 39 ?? ?? ?? 36 E3 13 48 A9 03 10 06 A9",
+        "patch": "23 00 80 52 03 20 00 39 E3 13 48 A9 03 10 06 A9",
+    },
+    {
+        "name": "Antigravity CLI (arm64: eligibility screen off)",
+        "arch": "arm64",
+        "orig": "02 20 40 39 ?? ?? ?? 37 ?? ?? ?? ?? E0 87 0E A9 E2 8F 0F A9 E4 97 10 A9 E6 9F 11 A9",
+        "patch": "22 00 80 52 ?? ?? ?? 37 ?? ?? ?? ?? E0 87 0E A9 E2 8F 0F A9 E4 97 10 A9 E6 9F 11 A9",
+    },
+]
+
+IDE_RE = re.compile(rb"(resetIsTierGCPTos\(\),)this\.[A-Za-z_$0-9]+\.isGoogleInternal")
+IDE_DONE = b"resetIsTierGCPTos(),true"
+IDE_DONE_RE = re.compile(re.escape(IDE_DONE))
 
 
 class PatchError(Exception):
@@ -211,6 +243,8 @@ def pe_ranges(m: Union[bytes, mmap.mmap]) -> Tuple[List[Slice], Dict[str, Any]]:
     (lfanew,) = u("<I", m, 0x3C)
     if bytes(m[lfanew:lfanew + 4]) != b"PE\0\0":
         raise PatchError("PE: нет сигнатуры PE\\0\\0")
+    (machine,) = u("<H", m, lfanew + 4)
+    arch_name = "x86_64" if machine == 0x8664 else "arm64" if machine == 0xAA64 else "i386" if machine == 0x14C else "main"
     (nsec,) = u("<H", m, lfanew + 6)
     (optsz,) = u("<H", m, lfanew + 20)
     (magic,) = u("<H", m, lfanew + 24)
@@ -235,10 +269,11 @@ def pe_ranges(m: Union[bytes, mmap.mmap]) -> Tuple[List[Slice], Dict[str, Any]]:
     extra = {
         "lfanew": lfanew,
         "magic": magic,
+        "machine": machine,
         "has_authenticode": has_authenticode,
         "sec_dir_off": sec_dir_off,
     }
-    return [Slice(name="main", ranges=merge_ranges(raw_ranges, size))], extra
+    return [Slice(name=arch_name, ranges=merge_ranges(raw_ranges, size))], extra
 
 
 def elf_ranges(m: Union[bytes, mmap.mmap]) -> Tuple[List[Slice], Dict[str, Any]]:
@@ -247,6 +282,9 @@ def elf_ranges(m: Union[bytes, mmap.mmap]) -> Tuple[List[Slice], Dict[str, Any]]
     if cls not in (1, 2) or data not in (1, 2):
         raise PatchError("ELF: неизвестный класс/порядок байт")
     e = "<" if data == 1 else ">"
+    (machine,) = u(e + "H", m, 0x12)
+    arch_name = "x86_64" if machine == 0x3E else "arm64" if machine == 0xB7 else "i386" if machine == 0x03 else "main"
+
     if cls == 2:
         phoff, shoff = u(e + "QQ", m, 0x20)
         phentsize, phnum, shentsize, shnum = u(e + "HHHH", m, 0x36)
@@ -273,7 +311,7 @@ def elf_ranges(m: Union[bytes, mmap.mmap]) -> Tuple[List[Slice], Dict[str, Any]]
                 typ, off, _v, _p, fsz, _ms, flags = u(e + "IIIIIII", m, o)
             if typ == 1 and flags & 1 and fsz:
                 raw_ranges.append((off, min(off + fsz, size)))
-    return [Slice(name="main", ranges=merge_ranges(raw_ranges, size))], {}
+    return [Slice(name=arch_name, ranges=merge_ranges(raw_ranges, size))], {"machine": machine}
 
 
 _MACHO_THIN = {
@@ -410,8 +448,17 @@ def analyze(job: Job) -> Plan:
             # Если указан фильтр архитектуры
             slices = all_slices
             if job.arch:
-                slices = [s for s in all_slices if s.name.lower() == job.arch.lower()]
-                if not slices:
+                norm = job.arch.lower()
+                aliases = {norm, "main"}
+                if norm in ("x64", "x86_64", "amd64"):
+                    aliases.update(["x64", "x86_64", "amd64"])
+                elif norm in ("arm64", "aarch64", "arm64e"):
+                    aliases.update(["arm64", "aarch64", "arm64e"])
+
+                matched = [s for s in all_slices if s.name.lower() in aliases]
+                if matched:
+                    slices = matched
+                else:
                     avail = ", ".join(s.name for s in all_slices)
                     raise PatchError(f"{job.path}: архитектура {job.arch!r} не найдена (доступны: {avail})")
 
@@ -1083,10 +1130,227 @@ def cmd_restore(jobs: List[Job], keep: bool = False, force: bool = False) -> int
 
 
 # --------------------------------------------------------------------------- #
+# Antigravity Discovery & IDE Patching
+# --------------------------------------------------------------------------- #
+def purge_ide_cache() -> None:
+    home = os.path.expanduser("~")
+    if IS_WINDOWS:
+        bases = [
+            os.path.expandvars(r"%APPDATA%\Antigravity IDE"),
+            os.path.expandvars(r"%LOCALAPPDATA%\Antigravity IDE"),
+            os.path.expandvars(r"%USERPROFILE%\scoop\persist\antigravity-ide\data\user-data"),
+        ]
+    elif IS_DARWIN:
+        bases = [os.path.join(home, "Library", "Application Support", "Antigravity IDE")]
+    else:
+        cfg = os.environ.get("XDG_CONFIG_HOME") or os.path.join(home, ".config")
+        bases = [os.path.join(cfg, "Antigravity IDE")]
+
+    for b in bases:
+        for sub in ("CachedData", os.path.join("Code Cache", "js")):
+            p = os.path.join(b, sub)
+            if os.path.exists(p):
+                shutil.rmtree(p, ignore_errors=True)
+
+
+def patch_ide_main_js(path: str, dry_run: bool = False) -> bool:
+    if not os.path.exists(path):
+        return False
+    try:
+        with open(path, "rb") as f:
+            content = f.read()
+    except OSError as e:
+        log(f"  {c_err('✗')} Не удаётся прочесть {path}: {e}")
+        return False
+
+    if IDE_DONE_RE.search(content):
+        log(f"• {path} (Antigravity IDE)\n    Состояние: {c_ok('уже пропатчен (isGoogleInternal=true)')}")
+        return True
+
+    m = IDE_RE.search(content)
+    if not m:
+        log(f"• {path} (Antigravity IDE)\n    {c_warn('Сигнатура IDE не найдена')} (возможно, неподдерживаемая версия)")
+        return False
+
+    log(f"• {path} (Antigravity IDE)\n    Состояние: {c_ok('оригинал (можно патчить)')}")
+    if dry_run:
+        log(f"  {c_cyan('[DRY-RUN]')} Будет заменено: {m.group(0).decode(errors='replace')} → resetIsTierGCPTos(),true")
+        return True
+
+    bak = path + BAK_SUFFIX
+    if not os.path.exists(bak):
+        shutil.copy2(path, bak)
+        log(f"  {c_ok('бэкап сохранён:')} {bak}")
+
+    patched, count = IDE_RE.subn(rb"\1true", content, count=1)
+    if count != 1:
+        log(f"  {c_err('✗')} Ошибка замены в main.js (найдено {count} вхождений)")
+        return False
+
+    with open(path, "wb") as f:
+        f.write(patched)
+        f.flush()
+        os.fsync(f.fileno())
+
+    purge_ide_cache()
+    log(f"  {c_ok('✓')} IDE успешно пропатчена: isGoogleInternal=true (кэш V8 очищен)")
+    return True
+
+
+def restore_ide_main_js(path: str, keep: bool = False) -> bool:
+    bak = path + BAK_SUFFIX
+    if not os.path.exists(bak):
+        return False
+    try:
+        shutil.copy2(bak, path)
+        if not keep:
+            os.remove(bak)
+        purge_ide_cache()
+        log(f"{c_ok('✓')} Antigravity IDE восстановлена из {bak}")
+        return True
+    except OSError as e:
+        log(f"{c_err('✗')} Ошибка восстановления IDE {path}: {e}")
+        return False
+
+
+def discover_antigravity_candidates() -> Tuple[List[str], List[str]]:
+    bin_cands: List[str] = []
+    ide_cands: List[str] = []
+
+    for name in ("agy", "antigravity", "language_server"):
+        w = shutil.which(name)
+        if w:
+            bin_cands.append(os.path.realpath(w))
+
+    home = os.path.expanduser("~")
+    if IS_WINDOWS:
+        roots = []
+        for env_var in ("LOCALAPPDATA", "APPDATA", "ProgramFiles", "ProgramFiles(X86)", "USERPROFILE"):
+            val = os.environ.get(env_var)
+            if val:
+                roots.append(val)
+
+        try:
+            import winreg
+            for hive in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+                try:
+                    with winreg.OpenKey(hive, r"Software\Microsoft\Windows\CurrentVersion\Uninstall") as key:
+                        cnt = winreg.QueryInfoKey(key)[0]
+                        for i in range(cnt):
+                            try:
+                                with winreg.OpenKey(key, winreg.EnumKey(key, i)) as subkey:
+                                    name_val = str(winreg.QueryValueEx(subkey, "DisplayName")[0]).lower()
+                                    if "antigravity" in name_val:
+                                        loc = winreg.QueryValueEx(subkey, "InstallLocation")[0]
+                                        if loc and os.path.isdir(loc):
+                                            roots.append(loc)
+                            except OSError:
+                                pass
+                except OSError:
+                    pass
+        except ImportError:
+            pass
+
+        patterns = [
+            os.path.join(home, ".gemini", "bin", "agy.exe"),
+            os.path.join(home, "AppData", "Local", "agy", "bin", "agy.exe"),
+            os.path.join(home, "AppData", "Local", "Programs", "Antigravity", "resources", "bin", "language_server.exe"),
+            os.path.join(home, "AppData", "Local", "Programs", "Antigravity", "Antigravity.exe"),
+        ]
+        for r in roots:
+            patterns.append(os.path.join(r, "*ntigravity*", "resources", "bin", "language_server.exe"))
+            patterns.append(os.path.join(r, "*ntigravity*", "*", "resources", "bin", "language_server.exe"))
+            patterns.append(os.path.join(r, "*ntigravity*", "bin", "agy.exe"))
+            patterns.append(os.path.join(r, "*ntigravity*", "*", "bin", "agy.exe"))
+            patterns.append(os.path.join(r, "*ntigravity*", "agy.exe"))
+            patterns.append(os.path.join(r, "*ntigravity*", "resources", "app", "out", "main.js"))
+            patterns.append(os.path.join(r, "*ntigravity*", "*", "resources", "app", "out", "main.js"))
+
+        import glob
+        for pat in patterns:
+            for hit in glob.glob(pat):
+                if hit.endswith(".js"):
+                    ide_cands.append(os.path.realpath(hit))
+                elif hit.endswith(".exe"):
+                    bin_cands.append(os.path.realpath(hit))
+
+    elif IS_DARWIN:
+        patterns = [
+            os.path.join(home, ".gemini", "bin", "agy"),
+            "/Applications/Antigravity.app/Contents/Resources/bin/language_server",
+            "/Applications/Antigravity.app/Contents/MacOS/Antigravity",
+            "/opt/homebrew/bin/agy",
+            os.path.join(home, ".local", "bin", "agy"),
+        ]
+        ide_patterns = [
+            "/Applications/Antigravity.app/Contents/Resources/app/out/main.js",
+            "/Applications/Antigravity IDE.app/Contents/Resources/app/out/main.js",
+        ]
+        for p in patterns:
+            if os.path.exists(p):
+                bin_cands.append(os.path.realpath(p))
+        for p in ide_patterns:
+            if os.path.exists(p):
+                ide_cands.append(os.path.realpath(p))
+    else:  # Linux
+        patterns = [
+            os.path.join(home, ".gemini", "bin", "agy"),
+            os.path.join(home, ".local", "bin", "agy"),
+            "/opt/antigravity/resources/bin/language_server",
+            "/usr/local/bin/agy",
+            "/usr/bin/agy",
+        ]
+        ide_patterns = [
+            "/opt/antigravity/resources/app/out/main.js",
+            "/usr/share/antigravity/resources/app/out/main.js",
+        ]
+        for p in patterns:
+            if os.path.exists(p):
+                bin_cands.append(os.path.realpath(p))
+        for p in ide_patterns:
+            if os.path.exists(p):
+                ide_cands.append(os.path.realpath(p))
+
+    bin_clean = list(dict.fromkeys([p for p in bin_cands if os.path.isfile(p)]))
+    ide_clean = list(dict.fromkeys([p for p in ide_cands if os.path.isfile(p)]))
+    return bin_clean, ide_clean
+
+
+def build_antigravity_jobs() -> Tuple[List[Job], List[str]]:
+    bin_files, ide_files = discover_antigravity_candidates()
+    jobs: List[Job] = []
+
+    for fpath in bin_files:
+        for gate in ANTIGRAVITY_GATES:
+            try:
+                orig_pat = Pattern(gate["orig"])
+                patch_pat = Pattern(gate["patch"])
+                test_job = Job(fpath, orig_pat, patch_pat, name=gate["name"], arch=gate.get("arch"))
+                plan = analyze(test_job)
+                if plan.targets:
+                    jobs.append(test_job)
+                    break
+            except Exception:
+                continue
+
+    return jobs, ide_files
+
+
+# --------------------------------------------------------------------------- #
 # CLI парсинг
 # --------------------------------------------------------------------------- #
-def build_jobs(args) -> List[Job]:
+def build_jobs(args) -> Tuple[List[Job], List[str]]:
     jobs: List[Job] = []
+    ide_files: List[str] = []
+
+    if getattr(args, "antigravity", False):
+        auto_jobs, ide_cands = build_antigravity_jobs()
+        jobs.extend(auto_jobs)
+        ide_files.extend(ide_cands)
+        if not jobs and not ide_files:
+            raise PatchError("Компоненты Google Antigravity не найдены в стандартных путях системы")
+        return jobs, ide_files
+
     if args.config:
         base = os.path.dirname(os.path.abspath(args.config))
         try:
@@ -1117,8 +1381,8 @@ def build_jobs(args) -> List[Job]:
         ))
 
     if not jobs:
-        raise PatchError("укажите --config <путь> или комбинацию --file / --original / --patched")
-    return jobs
+        raise PatchError("укажите --antigravity (-A), --config <путь> или --file / --original / --patched")
+    return jobs, ide_files
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -1126,6 +1390,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         sys.stdout.reconfigure(errors="replace")
 
     common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("-A", "--antigravity", action="store_true",
+                        help="автоматически найти и обработать все установленные компоненты Google Antigravity (CLI, Manager, IDE)")
     common.add_argument("-c", "--config", help="JSON-конфиг со списком патчей")
     common.add_argument("-f", "--file", help="целевой бинарник (вместо конфига)")
     common.add_argument("-o", "--original", help="исходная сигнатура (hex, ?? = wildcard)")
@@ -1154,16 +1420,34 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     args = ap.parse_args(argv)
     try:
-        jobs = build_jobs(args)
+        jobs, ide_files = build_jobs(args)
     except PatchError as e:
         log(f"{c_err('✗')} {e}")
         return 2
 
+    rc = 0
     if args.cmd == "status":
-        return cmd_status(jobs, verbose=args.verbose)
+        if jobs:
+            rc = cmd_status(jobs, verbose=args.verbose)
+        for ide in ide_files:
+            patch_ide_main_js(ide, dry_run=True)
+        return rc
+
     if args.cmd == "patch":
-        return cmd_patch(jobs, do_resign=not args.no_resign, dry_run=args.dry_run)
-    return cmd_restore(jobs, keep=args.keep, force=args.force)
+        if jobs:
+            rc = cmd_patch(jobs, do_resign=not args.no_resign, dry_run=args.dry_run)
+            if rc != 0:
+                return rc
+        for ide in ide_files:
+            patch_ide_main_js(ide, dry_run=args.dry_run)
+        return rc
+
+    # restore
+    if jobs:
+        rc = cmd_restore(jobs, keep=args.keep, force=args.force)
+    for ide in ide_files:
+        restore_ide_main_js(ide, keep=args.keep)
+    return rc
 
 
 if __name__ == "__main__":

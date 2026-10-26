@@ -1,0 +1,26 @@
+{
+  "description": "Готовый конфиг сигнатур для Google Antigravity (Eligibility & hasValidAuth bypass)",
+  "patches": [
+    {
+      "name": "Antigravity CLI / Extension Hub (hasValidAuth=true)",
+      "file": "%LOCALAPPDATA%/agy/bin/agy.exe",
+      "arch": "x86_64",
+      "original": "80 78 08 00 74 ?? 48 8B 54 24 70 48 89 50 60",
+      "patched":  "C6 40 08 01 90 90 48 8B 54 24 70 48 89 50 60"
+    },
+    {
+      "name": "Antigravity Language Server / Manager (hasValidAuth=true)",
+      "file": "%LOCALAPPDATA%/Programs/Antigravity/resources/bin/language_server.exe",
+      "arch": "x86_64",
+      "original": "80 78 08 00 74 ?? 48 8B 54 24 70 48 89 50 60",
+      "patched":  "C6 40 08 01 90 90 48 8B 54 24 70 48 89 50 60"
+    },
+    {
+      "name": "Antigravity CLI Legacy (eligibility screen off)",
+      "file": "%LOCALAPPDATA%/agy/bin/agy.exe",
+      "arch": "x86_64",
+      "original": "48 85 C9 0F 84 ?? ?? ?? ?? 80 79 08 00 0F 85 ?? ?? ?? ?? 48 89 C8 90 E8 ?? ?? ?? ?? 48 89 84 24 E0 00 00 00 48 89 9C 24 E8 00 00 00 48 89 8C 24 F0 00 00 00",
+      "patched":  "48 85 C9 0F 84 ?? ?? ?? ?? 48 85 C9 90 0F 85 ?? ?? ?? ?? 48 89 C8 90 E8 ?? ?? ?? ?? 48 89 84 24 E0 00 00 00 48 89 9C 24 E8 00 00 00 48 89 8C 24 F0 00 00 00"
+    }
+  ]
+}
