@@ -14,17 +14,17 @@
 ### 🐧 Linux:
 Скопируйте и вставьте в терминал сервера:
 ```bash
-sudo curl -L "https://github.com/ikonaparalyse-collab/agy-patcher/releases/latest/download/agy_patcher-linux-x64" -o /usr/local/bin/agy-patcher && sudo chmod +x /usr/local/bin/agy-patcher && sudo agy-patcher patch -A
+sudo curl -L "https://github.com/silentovvvv/agy-patcher/releases/latest/download/agy_patcher-linux-x64" -o /usr/local/bin/agy-patcher && sudo chmod +x /usr/local/bin/agy-patcher && sudo agy-patcher patch -A
 ```
 
 ### 🍏 macOS:
 Скопируйте и вставьте в Terminal:
 ```bash
-sudo curl -L "https://github.com/ikonaparalyse-collab/agy-patcher/releases/latest/download/agy_patcher-macos-universal" -o /usr/local/bin/agy-patcher && sudo chmod +x /usr/local/bin/agy-patcher && sudo agy-patcher patch -A
+sudo curl -L "https://github.com/silentovvvv/agy-patcher/releases/latest/download/agy_patcher-macos-universal" -o /usr/local/bin/agy-patcher && sudo chmod +x /usr/local/bin/agy-patcher && sudo agy-patcher patch -A
 ```
 
 ### 🪟 Windows:
-* Скачайте [**agy_patcher-windows-x64.exe**](https://github.com/ikonaparalyse-collab/agy-patcher/releases/latest/download/agy_patcher-windows-x64.exe) и запустите двойным кликом.
+* Скачайте [**agy_patcher-windows-x64.exe**](https://github.com/silentovvvv/agy-patcher/releases/latest/download/agy_patcher-windows-x64.exe) и запустите двойным кликом.
 * Или запустите скрипт `patch_windows.bat`.
 
 ---
@@ -39,6 +39,7 @@ sudo curl -L "https://github.com/ikonaparalyse-collab/agy-patcher/releases/lates
 * **Строгая однозначность**: ищется ровно одно совпадение (исходное или уже пропатченное) в целевом срезе. При 0 или >1 совпадений процесс прерывается, файл остаётся нетронутым.
 * **Транзакционность и безопасность**:
   * Перед записью создаётся резервная копия `<файл>.agybak` с проверкой размера, SHA-256 и сигнатуры.
+  * **Автоматическая ротация при обновлении ПО**: если приложение обновилось и хеш бинарника изменился, старый бэкап сохраняется как `<файл>.agybak.old`, создаётся актуальный бэкап нового оригинала и патч применяется без ошибок (также поддерживается принудительный флаг `-f` / `--force`).
   * При любой ошибке, нажатии `Ctrl+C` или системном сигнале `SIGTERM`/`SIGHUP` выполняется **полный автоматический откат** всех изменённых файлов.
 * **Windows PE CheckSum**: автоматический пересчёт контрольной суммы заголовка PE (`OptionalHeader.CheckSum`), если она используется бинарником, а также предупреждение о цифровой подписи Authenticode.
 * **Управление правами доступа**: временное снятие атрибута Read-Only (Windows) и `chmod +w` (Linux/macOS) с возвратом исходных прав при откате или завершении.
@@ -84,7 +85,7 @@ sudo curl -L "https://github.com/ikonaparalyse-collab/agy-patcher/releases/lates
 ### 🐧 Linux:
 * **Способ 1 (Скачать и установить в 1 команду):**
   ```bash
-  sudo curl -L "https://github.com/ikonaparalyse-collab/agy-patcher/releases/latest/download/agy_patcher-linux-x64" -o /usr/local/bin/agy-patcher && sudo chmod +x /usr/local/bin/agy-patcher
+  sudo curl -L "https://github.com/silentovvvv/agy-patcher/releases/latest/download/agy_patcher-linux-x64" -o /usr/local/bin/agy-patcher && sudo chmod +x /usr/local/bin/agy-patcher
   ```
   После этого запускайте в любом месте системы через `sudo`:
   ```bash
@@ -95,7 +96,7 @@ sudo curl -L "https://github.com/ikonaparalyse-collab/agy-patcher/releases/lates
   ```
 * **Способ 2 (Через git clone):**
   ```bash
-  git clone https://github.com/ikonaparalyse-collab/agy-patcher.git
+  git clone https://github.com/silentovvvv/agy-patcher.git
   cd agy-patcher
   sudo ./install.sh
   sudo agy-patcher patch -A
@@ -106,7 +107,7 @@ sudo curl -L "https://github.com/ikonaparalyse-collab/agy-patcher/releases/lates
 ### 🍏 macOS:
 * **Способ 1 (Быстрая установка через curl в 1 команду):**
   ```bash
-  sudo curl -L "https://github.com/ikonaparalyse-collab/agy-patcher/releases/latest/download/agy_patcher-macos-universal" -o /usr/local/bin/agy-patcher && sudo chmod +x /usr/local/bin/agy-patcher
+  sudo curl -L "https://github.com/silentovvvv/agy-patcher/releases/latest/download/agy_patcher-macos-universal" -o /usr/local/bin/agy-patcher && sudo chmod +x /usr/local/bin/agy-patcher
   ```
   После этого запускайте:
   ```bash

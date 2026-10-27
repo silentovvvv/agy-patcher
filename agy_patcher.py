@@ -50,7 +50,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 
 BAK_SUFFIX = ".agybak"
 SIGN_SUFFIX = ".agysignbak"
@@ -658,15 +658,42 @@ def check_backup_for_patched(job: Job, plan: Plan, bak: str) -> None:
         raise PatchError(f"{bak}: резервная копия не соответствует текущему файлу")
 
 
-def ensure_backup(job: Job, plan: Plan, before_sha: str) -> bool:
+def ensure_backup(
+    job: Job,
+    plan: Plan,
+    before_sha: str,
+    force: bool = False,
+    tx: Optional[Tx] = None,
+) -> bool:
     bak = job.path + BAK_SUFFIX
     if os.path.exists(bak):
-        if sha256_file(bak) != before_sha:
+        if sha256_file(bak) == before_sha:
+            return False
+        # Хеш бэкапа не совпадает с текущим файлом.
+        # Если текущий файл подтверждён как чистый оригинал (plan.state == "original")
+        # или передан флаг force — ротируем устаревший бэкап в .agybak.old и создаём новый.
+        if plan.state == "original" or force:
+            old_bak = bak + ".old"
+            log(f"  {c_warn('Обнаружен устаревший бэкап:')} {bak} (возможно, приложение обновилось)")
+            log(f"  {c_warn('→ Старый бэкап сохранён как:')} {old_bak}")
+            if os.path.exists(old_bak):
+                try:
+                    os.remove(old_bak)
+                except OSError:
+                    pass
+            os.replace(bak, old_bak)
+            if tx:
+                tx.push(
+                    f"вернуть прежний бэкап {bak}",
+                    lambda b=bak, ob=old_bak: (os.replace(ob, b) if os.path.exists(ob) and not os.path.exists(b) else None),
+                )
+        else:
             raise PatchError(
                 f"{bak} уже существует и НЕ совпадает с текущим оригиналом (устаревший бэкап, "
-                f"возможно приложение обновилось). Удалите/переименуйте его вручную."
+                f"возможно приложение обновилось). Используйте --force (-f) для обновления бэкапа "
+                f"или удалите/переименуйте его вручную."
             )
-        return False
+
     tmp = bak + ".tmp"
     try:
         shutil.copy2(job.path, tmp)
@@ -944,14 +971,14 @@ def cmd_status(jobs: List[Job], verbose: bool = False) -> int:
     return rc
 
 
-def apply_job(job: Job, plan: Plan, tx: Tx, dry_run: bool = False) -> None:
+def apply_job(job: Job, plan: Plan, tx: Tx, dry_run: bool = False, force: bool = False) -> None:
     bak = job.path + BAK_SUFFIX
     before_sha = sha256_file(job.path)
 
     if not dry_run:
         ensure_writable(job.path, tx)
-        if ensure_backup(job, plan, before_sha):
-            tx.push(f"удалить {bak}", lambda: os.remove(bak))
+        if ensure_backup(job, plan, before_sha, force=force, tx=tx):
+            tx.push(f"удалить {bak}", lambda: os.remove(bak) if os.path.exists(bak) else None)
         log(f"  {c_ok('бэкап проверен:')} {bak}")
         tx.push(f"вернуть {job.path}",
                 lambda: rollback_windows(job.path, bak, plan.targets, before_sha))
@@ -978,7 +1005,7 @@ def apply_job(job: Job, plan: Plan, tx: Tx, dry_run: bool = False) -> None:
         log(f"  {c_ok('проверка пройдена:')} хеш и сигнатура подтверждены")
 
 
-def cmd_patch(jobs: List[Job], do_resign: bool = True, dry_run: bool = False) -> int:
+def cmd_patch(jobs: List[Job], do_resign: bool = True, dry_run: bool = False, force: bool = False) -> int:
     global _CURRENT_TX
     paths = [os.path.realpath(j.path) for j in jobs]
     if len(set(paths)) != len(paths):
@@ -1032,13 +1059,19 @@ def cmd_patch(jobs: List[Job], do_resign: bool = True, dry_run: bool = False) ->
             if p.state == "patched":
                 bak = j.path + BAK_SUFFIX
                 if os.path.exists(bak):
-                    check_backup_for_patched(j, p, bak)
-                    log(f"  {c_ok('уже изменён')}, резервная копия в порядке — пропуск")
+                    try:
+                        check_backup_for_patched(j, p, bak)
+                        log(f"  {c_ok('уже изменён')}, резервная копия в порядке — пропуск")
+                    except PatchError as e:
+                        if force:
+                            log(f"  {c_warn('уже изменён')}, бэкап отличается ({e}) — пропуск (--force)")
+                        else:
+                            raise
                 else:
                     log(f"  {c_warn('уже изменён')}, но .agybak не найден — пропуск (откат невозможен)")
                 continue
 
-            apply_job(j, p, tx, dry_run=dry_run)
+            apply_job(j, p, tx, dry_run=dry_run, force=force)
             changed.append((j, p))
 
         if IS_DARWIN and do_resign and not dry_run:
@@ -1083,6 +1116,8 @@ def cmd_restore(jobs: List[Job], keep: bool = False, force: bool = False) -> int
         bak = j.path + BAK_SUFFIX
         try:
             if not os.path.exists(bak):
+                if os.path.exists(bak + ".old"):
+                    raise PatchError(f"{bak} не найден, но существует {bak}.old (переименуйте его вручную для отката)")
                 raise PatchError(f"{bak} не найден")
             b = analyze(Job(bak, j.original, j.patched, arch=j.arch))
             if b.state != "original":
@@ -1153,7 +1188,7 @@ def purge_ide_cache() -> None:
                 shutil.rmtree(p, ignore_errors=True)
 
 
-def patch_ide_main_js(path: str, dry_run: bool = False) -> bool:
+def patch_ide_main_js(path: str, dry_run: bool = False, force: bool = False) -> bool:
     if not os.path.exists(path):
         return False
     try:
@@ -1178,7 +1213,19 @@ def patch_ide_main_js(path: str, dry_run: bool = False) -> bool:
         return True
 
     bak = path + BAK_SUFFIX
-    if not os.path.exists(bak):
+    if os.path.exists(bak):
+        if sha256_file(bak) != sha256_file(path):
+            old_bak = bak + ".old"
+            log(f"  {c_warn('Обнаружен устаревший бэкап IDE main.js (обновление):')} {old_bak}")
+            if os.path.exists(old_bak):
+                try:
+                    os.remove(old_bak)
+                except OSError:
+                    pass
+            os.replace(bak, old_bak)
+            shutil.copy2(path, bak)
+            log(f"  {c_ok('новый бэкап сохранён:')} {bak}")
+    else:
         shutil.copy2(path, bak)
         log(f"  {c_ok('бэкап сохранён:')} {bak}")
 
@@ -1422,9 +1469,9 @@ def interactive_menu() -> int:
     if choice == "1":
         log("\n" + c_bold("--- Применение патча ---"))
         if jobs:
-            rc = cmd_patch(jobs)
+            rc = cmd_patch(jobs, force=True)
         for ide in ide_files:
-            patch_ide_main_js(ide)
+            patch_ide_main_js(ide, force=True)
     elif choice == "2":
         log("\n" + c_bold("--- Проверка статуса ---"))
         if jobs:
@@ -1482,6 +1529,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     # patch
     sp = sub.add_parser("patch", parents=[common], help="применить патч (с транзакционным бэкапом)")
     sp.add_argument("-n", "--dry-run", action="store_true", help="только проверка и симуляция без изменения файлов")
+    sp.add_argument("-f", "--force", action="store_true", help="обновить резервную копию при несовпадении хеша (если приложение обновилось)")
     sp.add_argument("--no-resign", action="store_true", help="macOS: пропустить ad-hoc переподпись")
 
     # restore
@@ -1506,11 +1554,11 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if args.cmd == "patch":
         if jobs:
-            rc = cmd_patch(jobs, do_resign=not args.no_resign, dry_run=args.dry_run)
+            rc = cmd_patch(jobs, do_resign=not args.no_resign, dry_run=args.dry_run, force=args.force)
             if rc != 0:
                 return rc
         for ide in ide_files:
-            patch_ide_main_js(ide, dry_run=args.dry_run)
+            patch_ide_main_js(ide, dry_run=args.dry_run, force=args.force)
         return rc
 
     # restore

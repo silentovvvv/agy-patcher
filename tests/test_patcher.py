@@ -296,5 +296,38 @@ class TestBinaryPatching(unittest.TestCase):
         self.assertEqual(patcher.analyze(job).state, "patched")
 
 
+    def test_outdated_backup_auto_rotation(self):
+        # Проверяем поведение при обновлении приложения, когда остался старый .agybak
+        code = b"\x90\x90" + bytes.fromhex("48 8B 05 11 22 33 44") + b"\xC3"
+        pe_path = self._create_minimal_pe(code)
+
+        orig_pat = patcher.Pattern("48 8B 05 11 22 33 44")
+        patch_pat = patcher.Pattern("48 8B 05 90 90 90 90")
+        job = patcher.Job(pe_path, orig_pat, patch_pat, name="Test Outdated Backup")
+
+        # Создаем искусственный устаревший .agybak (от старой версии приложения)
+        bak_path = pe_path + patcher.BAK_SUFFIX
+        old_bak_path = bak_path + ".old"
+        with open(bak_path, "wb") as f:
+            f.write(b"OLD_VERSION_BACKUP_CONTENT" * 32)
+
+        # Применяем патч — должно автоматически обнаружить обновление,
+        # перенести старый бэкап в .agybak.old, создать новый .agybak и успешно пропатчить
+        res = patcher.cmd_patch([job])
+        self.assertEqual(res, 0)
+
+        # Проверяем, что старый бэкап сохранен в .agybak.old
+        self.assertTrue(os.path.exists(old_bak_path))
+        with open(old_bak_path, "rb") as f:
+            self.assertEqual(f.read(), b"OLD_VERSION_BACKUP_CONTENT" * 32)
+
+        # Проверяем, что новый .agybak создан и соответствует исходному оригиналу
+        self.assertTrue(os.path.exists(bak_path))
+        self.assertEqual(patcher.analyze(patcher.Job(bak_path, orig_pat, patch_pat)).state, "original")
+
+        # Файл успешно пропатчен
+        self.assertEqual(patcher.analyze(job).state, "patched")
+
+
 if __name__ == "__main__":
     unittest.main()
