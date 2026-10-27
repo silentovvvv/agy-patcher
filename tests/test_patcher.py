@@ -328,6 +328,20 @@ class TestBinaryPatching(unittest.TestCase):
         # Файл успешно пропатчен
         self.assertEqual(patcher.analyze(job).state, "patched")
 
+    def test_cli_arg_parsing(self):
+        # Проверяем корректность регистрации аргументов командной строки (отсутствие конфликтов флагов)
+        with self.assertRaises(SystemExit) as cm:
+            patcher.main(["patch", "--help"])
+        self.assertEqual(cm.exception.code, 0)
+
+        with self.assertRaises(SystemExit) as cm:
+            patcher.main(["status", "--help"])
+        self.assertEqual(cm.exception.code, 0)
+
+        with self.assertRaises(SystemExit) as cm:
+            patcher.main(["restore", "--help"])
+        self.assertEqual(cm.exception.code, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

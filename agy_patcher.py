@@ -50,7 +50,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-__version__ = "1.3.0"
+__version__ = "1.3.1"
 
 BAK_SUFFIX = ".agybak"
 SIGN_SUFFIX = ".agysignbak"
@@ -690,7 +690,7 @@ def ensure_backup(
         else:
             raise PatchError(
                 f"{bak} уже существует и НЕ совпадает с текущим оригиналом (устаревший бэкап, "
-                f"возможно приложение обновилось). Используйте --force (-f) для обновления бэкапа "
+                f"возможно приложение обновилось). Используйте --force для обновления бэкапа "
                 f"или удалите/переименуйте его вручную."
             )
 
@@ -1529,7 +1529,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     # patch
     sp = sub.add_parser("patch", parents=[common], help="применить патч (с транзакционным бэкапом)")
     sp.add_argument("-n", "--dry-run", action="store_true", help="только проверка и симуляция без изменения файлов")
-    sp.add_argument("-f", "--force", action="store_true", help="обновить резервную копию при несовпадении хеша (если приложение обновилось)")
+    sp.add_argument("--force", action="store_true", help="обновить резервную копию при несовпадении хеша (если приложение обновилось)")
     sp.add_argument("--no-resign", action="store_true", help="macOS: пропустить ad-hoc переподпись")
 
     # restore
